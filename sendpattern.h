@@ -12,7 +12,7 @@ struct send_pattern {
 };
 
 struct send_pattern_request {
-  u_short port;
+  uint16_t port;
   struct send_pattern pattern;
 };
 

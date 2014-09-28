@@ -1,4 +1,4 @@
 #!/bin/bash
 
-gcc -o nt networktestservice.c
-gcc -o req request.c
+gcc -std=c99 -o nt networktestservice.c
+gcc -std=c99 -o req request.c

@@ -151,8 +151,7 @@ int main(int argc, char* argv[]) {
 
       char client_ip[INET_ADDRSTRLEN];
       inet_ntop(AF_INET, &target_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
-      printf("send test data to: %s:%d\n", client_ip, spr.port);
-
+      printf("send test data to: %s:%d\n", client_ip, return_port);
       response_code = send_sequence(&target_addr, &(spr.pattern));;
     }
     response_code = htonl(response_code);

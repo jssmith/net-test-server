@@ -14,11 +14,11 @@ int main(int argc, char* argv[]) {
   struct send_pattern_request spr;
   int n;
 
-  spr.port = 2389;
-  spr.pattern.packet_size = 1500;
-  spr.pattern.burst_size = 30;
-  spr.pattern.burst_interval = 1000000;
-  spr.pattern.num_bursts = 5;
+  spr.port = htonl(2389);
+  spr.pattern.packet_size = htonl(1500);
+  spr.pattern.burst_size = htonl(30);
+  spr.pattern.burst_interval = htonl(1000000);
+  spr.pattern.num_bursts = htonl(5);
 
   memset((char *) &serv_addr, 0, sizeof(serv_addr));
   serv_addr.sin_family = AF_INET;
@@ -44,6 +44,7 @@ int main(int argc, char* argv[]) {
   // get the response code
   int32_t response_code;
   n = recvfrom(sockfd, &response_code, sizeof(response_code), 0, NULL, NULL);
+  response_code = ntohl(response_code);
   if (n < 0) {
     perror("ERROR receiving");
     exit(1);

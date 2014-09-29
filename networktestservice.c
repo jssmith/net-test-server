@@ -17,6 +17,10 @@ int next_response_id() {
   return response_id_seq++;
 }
 
+static const int32_t MAX_BURST_SIZE = 1000;
+static const int32_t MAX_BURST_INTERVAL = 10000000;
+static const int32_t MAX_NUM_BURSTS = 1000;
+
 int send_sequence(const struct sockaddr_in* client_addr, const struct send_pattern* sp) {
   int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
   if (sockfd < 0) {
@@ -24,13 +28,32 @@ int send_sequence(const struct sockaddr_in* client_addr, const struct send_patte
     return -1;
   }
 
-  if (sp->packet_size < sizeof(struct response_label) || sp->packet_size > 65507) {
-    fprintf(stderr, "response size %d is out of bounds", sp->packet_size);
+  int32_t packet_size = ntohl(sp->packet_size);
+  int32_t burst_size = ntohl(sp->burst_size);
+  int32_t burst_interval = ntohl(sp->burst_interval);
+  int32_t num_bursts = ntohl(sp->num_bursts);
+
+
+  // verify configuration
+  if (packet_size < sizeof(struct response_label) || packet_size > 65507) {
+    fprintf(stderr, "response size %d is out of bounds", packet_size);
+    return -1;
+  }
+  if (burst_size < 1 || burst_size > MAX_BURST_SIZE) {
+    fprintf(stderr, "burst size %d is out of bounds", burst_size);
+    return -1;
+  }
+  if (burst_interval < 0 || burst_interval > MAX_BURST_INTERVAL) {
+    fprintf(stderr, "burst interval %d is out of bounds", burst_interval);
+    return -1;
+  }
+  if (num_bursts < 1 || num_bursts > MAX_NUM_BURSTS) {
+    fprintf(stderr, "num bursts %d is out of bounds", burst_interval);
     return -1;
   }
 
   int response_id = next_response_id();
-  char buffer[sp->packet_size];
+  char buffer[packet_size];
   memset(buffer, 0xCA, sizeof(buffer));
   struct response_label* rl = (struct response_label*) &buffer;
   rl->fingerprint = RESPONSE_FINGERPRINT;
@@ -38,14 +61,14 @@ int send_sequence(const struct sockaddr_in* client_addr, const struct send_patte
 
   int n;
   printf("start of send sequence %d\n", response_id);
-  for (int b = 0; b < sp->num_bursts; b++) {
+  for (int b = 0; b < num_bursts; b++) {
     if (b > 0) {
-      usleep(sp->burst_interval);
+      usleep(burst_interval);
     }
     rl->burst_id = b;
-    for (int i = 0; i < sp->burst_size; ++i) {
+    for (int i = 0; i < burst_size; ++i) {
       rl->sequence_id = i;
-      n = sendto(sockfd, buffer, sp->packet_size, 0, (struct sockaddr*) client_addr, sizeof(*client_addr));
+      n = sendto(sockfd, buffer, packet_size, 0, (struct sockaddr*) client_addr, sizeof(*client_addr));
       if (n < 0) {
         perror("ERROR sending datagrams");
         exit(1);
@@ -58,7 +81,8 @@ int send_sequence(const struct sockaddr_in* client_addr, const struct send_patte
 
 void describe_sequence(const struct send_pattern* sp) {
   printf("packet size: %d\nburst size: %d\nburst interval: %d\nnum bursts: %d\n",
-    sp->packet_size, sp->burst_size, sp->burst_interval, sp->num_bursts);
+    ntohl(sp->packet_size), ntohl(sp->burst_size),
+    ntohl(sp->burst_interval), ntohl(sp->num_bursts));
 }
 
 int main(int argc, char* argv[]) {
@@ -113,17 +137,25 @@ int main(int argc, char* argv[]) {
     memcpy(&spr, &buffer, sizeof(struct send_pattern_request));
     describe_sequence(&(spr.pattern));
 
-    // Write network test data pattern
-    memset((char *) &target_addr, 0, sizeof(target_addr));
-    target_addr.sin_family = AF_INET;
-    memcpy(&(target_addr.sin_addr), &(cli_addr.sin_addr), sizeof(cli_addr.sin_addr));
-    target_addr.sin_port = htons(spr.port);
+    int32_t response_code;
+    uint32_t return_port = ntohl(spr.port);
+    if (return_port < 1 || return_port > 65535) {
+      fprintf(stderr, "invalid return port specified %d", return_port);
+      response_code = -2;
+    } else {
+      // Write network test data pattern
+      memset((char *) &target_addr, 0, sizeof(target_addr));
+      target_addr.sin_family = AF_INET;
+      memcpy(&(target_addr.sin_addr), &(cli_addr.sin_addr), sizeof(cli_addr.sin_addr));
+      target_addr.sin_port = htons((uint32_t) return_port);
 
-    char client_ip[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &target_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
-    printf("send test data to: %s:%d\n", client_ip, spr.port);
+      char client_ip[INET_ADDRSTRLEN];
+      inet_ntop(AF_INET, &target_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+      printf("send test data to: %s:%d\n", client_ip, spr.port);
 
-    int32_t response_code = send_sequence(&target_addr, &(spr.pattern));;
+      response_code = send_sequence(&target_addr, &(spr.pattern));;
+    }
+    response_code = htonl(response_code);
     n = send(newsockfd, &response_code, sizeof(response_code), 0);
     if (n < 0) {
       perror("ERROR writing to socket");
